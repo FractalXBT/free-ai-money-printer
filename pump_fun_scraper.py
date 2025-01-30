@@ -5,6 +5,11 @@ import pandas as pd
 import os
 from datetime import datetime
 from colorama import Fore, Style, init
+import requests
+from dotenv import load_dotenv
+from urllib.parse import urlparse
+
+load_dotenv()
 
 # Initialize colorama for Windows compatibility
 init()
@@ -19,6 +24,16 @@ CSV_FILE = "pump_fun_data.csv"
 MIN_INITIAL_BUY = 1000  # Minimum initial buy to avoid small purchases
 MIN_SOL_AMOUNT = 0.01  # Minimum SOL balance for relevance
 MIN_MARKET_CAP = 30  # Ensuring a reasonable market cap
+
+# API Endpoint (example, update if needed)
+TWEETSCOUT_API_URL = "https://api.tweetscout.io/v2"
+TWEETSCOUT_API_KEY = os.getenv('TWEETSCOUT_API_KEY')
+
+# Define the minimum follower threshold
+MIN_FOLLOWERS = 30000 
+TWITTER_BLACKLIST = [
+  "elonmusk", "nypost", "pumpdotfun"
+]
 
 async def subscribe():
     """
@@ -43,6 +58,108 @@ async def subscribe():
     except Exception as e:
         print(Fore.RED + f"[!] WebSocket Error: {e}" + Style.RESET_ALL)
 
+def get_twitter_url(url):
+    """
+    Fetches JSON data from the given URL and extracts the Twitter URL.
+
+    Args:
+        url (str): The API endpoint or URL containing the JSON data.
+
+    Returns:
+        str: The extracted Twitter URL or None if not found.
+    """
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Raise an error for HTTP issues
+        data = response.json()
+
+        twitter_url = data.get("twitter")
+        return twitter_url if twitter_url else None
+
+    except requests.RequestException as e:
+        print(f"[!] Error fetching data from {url}: {e}")
+        return None
+
+def get_twitter_user_handle(twitter_url):
+    """
+    Extracts the Twitter user handle from a given tweet URL.
+
+    Args:
+        twitter_url (str): The full Twitter status URL.
+
+    Returns:
+        str: The extracted Twitter handle or None if the format is incorrect.
+    """
+    try:
+        
+        # Ensure twitter_url is a string (decode if bytes)
+        if twitter_url is None:
+          return None
+
+        parsed_url = urlparse(twitter_url)
+        path_parts = parsed_url.path.strip("/").split("/")
+
+        if len(path_parts) > 0:
+            return path_parts[0]  # The Twitter handle is the first part of the path
+
+        return None  # Return None if the URL format is incorrect
+
+    except Exception as e:
+        print(f"[!] Error processing URL: {e}")
+        return None
+
+def get_twitter_id(twitter_url):
+    user_handle = get_twitter_user_handle(twitter_url)
+
+    API_URL = TWEETSCOUT_API_URL + "/handle-to-id/" + user_handle
+    headers = {
+      "Accept": "application/json",
+      "ApiKey": TWEETSCOUT_API_KEY
+    }
+
+    response = requests.get(url, headers=headers)
+
+    return response.json().get("id")
+
+def get_token_influencers_count(twitter_url):
+    """
+    Fetches and filters social activity data for a given token.
+
+    Args:
+        token_symbol (str): The symbol of the token (e.g., SOL, ETH).
+
+    Returns:
+        list: A list of influencers with 30,000+ followers who follow the token.
+    """
+
+    user_handle = get_twitter_user_handle(twitter_url)
+    if user_handle is None:
+      return 0
+
+    if user_handle in TWITTER_BLACKLIST:
+      return -1
+
+    API_URL = TWEETSCOUT_API_URL + "/info/" + user_handle
+    headers = {
+      "Accept": "application/json",
+      "ApiKey": TWEETSCOUT_API_KEY
+    }
+
+    try:
+        response = requests.get(API_URL, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+
+        if "followers_count" not in data:
+            return 0
+
+        # Filter influencers with at least 30,000 followers
+        return data.get("followers_count")
+
+    except requests.RequestException as e:
+        print(f"[!] Error fetching social data: {e}")
+        return 0
+
 def process_data(data):
     """
     Processes incoming JSON data and saves it to a CSV file.
@@ -63,7 +180,8 @@ def process_data(data):
             "Token Name": data.get("name", "N/A"),
             "Symbol": data.get("symbol", "N/A"),
             "Metadata URI": data.get("uri", "N/A"),
-            "Pool": data.get("pool", "N/A")
+            "Pool": data.get("pool", "N/A"),
+            "Twitter": get_twitter_url(data.get("uri", "N/A"))
         }
 
         if row["Signature"] == "N/A":
@@ -90,6 +208,21 @@ def process_data(data):
             print(Fore.YELLOW + f"   - Market Cap (SOL): {row['Market Cap (SOL)']}" + Style.RESET_ALL)
             print(Fore.YELLOW + f"   - Mint Address: {row['Mint']}" + Style.RESET_ALL)
             print(Fore.YELLOW + f"   - Metadata URI: {row['Metadata URI']}" + Style.RESET_ALL)
+            print(Fore.YELLOW + f"   - Twitter: {row['Twitter']}" + Style.RESET_ALL)
+
+            # Fetch influencers for this token
+            twitter_url = row['Twitter']
+
+            influencers = get_token_influencers_count(twitter_url)
+
+            if influencers > 0:
+                print(Fore.MAGENTA + f"\n[🔍] Influencers following {row['Token Name']} ({row['Symbol']}): {influencers}")
+            elif influencers < 0:
+                print(Fore.RED + f"[!] Fake Twitter handle for {row['Token Name']} ({row['Symbol']}).")
+            else:
+                print(Fore.RED + f"[!] No influencers found for {row['Token Name']} ({row['Symbol']}).")
+
+            print(Style.RESET_ALL)
         
         else:
             print(Fore.GREEN + f"[*] Processed Token: {row['Token Name']} ({row['Symbol']})" + Style.RESET_ALL)
