@@ -3,8 +3,6 @@ import os
 import json
 import signal
 import asyncio
-from datetime import datetime
-from urllib.parse import urlparse
 
 # Third-Party Library Imports
 import requests
@@ -12,12 +10,6 @@ import pandas as pd
 from dotenv import load_dotenv
 from colorama import Fore, Style, init
 import websockets
-
-# Selenium WebDriver Imports
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
 
 load_dotenv()
 
