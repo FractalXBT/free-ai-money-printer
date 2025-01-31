@@ -83,6 +83,10 @@ def get_twitter_url(url):
     Returns:
         str: The extracted Twitter URL or None if not found.
     """
+
+    if url == "N/A":
+      return None
+
     try:
         response = requests.get(url)
         response.raise_for_status()  # Raise an error for HTTP issues
