@@ -13,6 +13,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
+import signal
 
 load_dotenv()
 
@@ -327,11 +328,33 @@ def process_data(data):
     except Exception as e:
         print(f"[!] Error processing data: {e}")
 
-def main():
+async def main():
     """
-    Main function to run the WebSocket listener.
+    Runs the WebSocket listener with graceful shutdown handling.
     """
-    asyncio.get_event_loop().run_until_complete(subscribe())
+    loop = asyncio.get_running_loop()
+    stop_event = asyncio.Event()
+
+    # Обробка Ctrl + C
+    def shutdown():
+        print("\n[!] Received exit signal, shutting down gracefully...")
+        stop_event.set()
+
+    loop.add_signal_handler(signal.SIGINT, shutdown)
+
+    try:
+        task = asyncio.create_task(subscribe())
+        await stop_event.wait()
+    finally:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            print("[✅] WebSocket task successfully cancelled.")
+        print("[✅] Cleanup complete. Exiting.")
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n[❌] Script interrupted by user. Exiting.")
