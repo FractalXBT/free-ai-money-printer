@@ -41,14 +41,11 @@ TWITTER_BLACKLIST = [
   "elonmusk", "nypost", "pumpdotfun"
 ]
 
-# Load environment variables
-RUGCHECK_API_KEY = os.getenv("RUGCHECK_API_KEY")  # Store your API key in a .env file
-
 # API Base URL
-RUGCHECK_API_URL = "https://rugcheck.xyz/tokens" # Not an API, just URL content parser
+RUGCHECK_API_URL = "https://api.rugcheck.xyz/v1"
 
 # Minimum Safety Score Threshold
-MIN_SAFETY_SCORE = 85
+MIN_SAFETY_SCORE = 500
 
 async def subscribe():
     """
@@ -179,73 +176,18 @@ def get_token_influencers_count(twitter_url):
         print(f"[!] Error fetching social data: {e}")
         return 0
 
-# Function to parse contract analysis and check safety
-def parse_contract_analysis(html_content):
-    soup = BeautifulSoup(html_content, "html.parser")
-    analysis_data = {}
-    # print(soup.prettify())
- 
-    # safety_score_element = soup.find("div", class_="safety-score")
-    # if safety_score_element:
-    #     safety_score = safety_score_element.text.strip().replace("%", "")
-    #     analysis_data["safety_score"] = float(safety_score)
-    # else:
-    #     analysis_data["safety_score"] = 0.0
-
-    risk_element = soup.find("div", class_="risk") # <-- Here we parse risk DOM element
-    if risk_element:
-        risk = risk_element.text.strip().replace("%", "")
-        analysis_data["risk"] = risk
-    else:
-        analysis_data["risk"] = ""
- 
-    # liquidity_burned_element = soup.find("div", class_="liquidity-burned")
-    # if liquidity_burned_element:
-    #     analysis_data["liquidity_burned"] = "Yes" in liquidity_burned_element.text.strip()
-    # else:
-    #     analysis_data["liquidity_burned"] = False
- 
-    # mintable_element = soup.find("div", class_="mintable")
-    # if mintable_element:
-    #     analysis_data["mintable"] = "Yes" in mintable_element.text.strip()
-    # else:
-    #     analysis_data["mintable"] = False
- 
-    # pausable_element = soup.find("div", class_="pausable")  # Replace with actual class or tag
-    # if pausable_element:
-    #     analysis_data["pausable"] = "Yes" in pausable_element.text.strip()
-    # else:
-    #     analysis_data["pausable"] = False
- 
-    return analysis_data
-
 def fetch_token_contract_analysis(token_address):
-    url = f"{RUGCHECK_API_URL}/{token_address}"
+    url = f"{RUGCHECK_API_URL}/tokens/{token_address}/report/summary"
     # print(url)
     try:
-        # Configure browser options
-        options = Options()
-        options.add_argument("--headless")  # Run in headless mode (no GUI)
-        options.add_argument("--disable-blink-features=AutomationControlled")  # Bypass bot detection
-        options.add_argument("--no-sandbox")  # Helps with permission issues in some environments
-        options.add_argument("--disable-gpu")  # Required for headless mode
-        options.add_argument("--disable-dev-shm-usage")  # Prevents memory issues
-        options.add_argument("--incognito")  # Open browser in incognito mode
+        response = requests.get(url)
+        response.raise_for_status()  # Raise an error for HTTP issues
+        data = response.json()
 
-        # Set a real User-Agent to avoid detection
-        options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36")
+        return data
 
-        # Set up ChromeDriver
-        service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=options)
-
-        # Load the webpage
-        driver.get(url)
-
-        # Get the fully rendered HTML after JavaScript execution
-        return driver.page_source
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching token contract analysis: {e}")
+    except requests.RequestException as e:
+        print(f"[!] Error fetching data from {url}: {e}")
         return None
 
 def process_data(data):
@@ -314,17 +256,20 @@ def process_data(data):
 
             # Analyze contract safety on rugcheck.xyz
             token_address = row["Mint"]
-            html_content = fetch_token_contract_analysis(token_address)
-            if html_content:
-              contract_analysis = parse_contract_analysis(html_content)
-              # print(contract_analysis)
-              risk = contract_analysis["risk"]
-              if risk == "Good":
-                  print(Fore.MAGENTA + f"[!] Token {row['Token Name']} has a 'Good' risk level")
+            # print(token_address)
+            contract_analysis = fetch_token_contract_analysis(token_address)
+            if contract_analysis:
+              # print(json.dumps(contract_analysis, indent=2, ensure_ascii=False))
+              risk_score = contract_analysis["score"]
+              if risk_score <= MIN_SAFETY_SCORE:
+                  print(f"[✅] Token \"{row['Token Name']}\" has a {risk_score} Risk Score")
               else:
-                  print(Fore.RED + f"[!] Token {row['Token Name']} has a '{risk}' risk level")
+                  print(f"[❌] Token \"{row['Token Name']}\" has a {risk_score} Risk Score")
 
-            print(Style.RESET_ALL)
+              for item in contract_analysis["risks"]:
+                print(f"    🚨 Risk Level: {item['level'].capitalize()} | Score: {item['score']}")
+                print(f"       Name: {item['name']}")
+                print(f"       Description: {item['description']}\n")
         
         else:
             print(Fore.GREEN + f"[*] Processed Token: {row['Token Name']} ({row['Symbol']})" + Style.RESET_ALL)
