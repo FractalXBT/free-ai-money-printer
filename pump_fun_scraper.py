@@ -1,19 +1,23 @@
-import asyncio
-import websockets
-import json
-import pandas as pd
+# Standard Library Imports
 import os
+import json
+import signal
+import asyncio
 from datetime import datetime
-from colorama import Fore, Style, init
-import requests
-from dotenv import load_dotenv
 from urllib.parse import urlparse
+
+# Third-Party Library Imports
+import requests
+import pandas as pd
+from dotenv import load_dotenv
+from colorama import Fore, Style, init
+import websockets
+
+# Selenium WebDriver Imports
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
-from bs4 import BeautifulSoup
-import signal
 
 load_dotenv()
 
